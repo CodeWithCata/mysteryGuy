@@ -3,15 +3,13 @@
 import express from "express";
 
 
-import userRouter from "./router/routes";
+import router from "./router/routes";
 
 import cors from "cors";
 import { env } from "./config/env";
 
 export function createApp() {
 
-
-  
   const app = express();
 
   app.use(express.json());
@@ -25,7 +23,7 @@ app.use(cors({
 
 
   // Routes
-  app.use("/api", userRouter);
+  app.use("/api", router);
 
   return app;
 }

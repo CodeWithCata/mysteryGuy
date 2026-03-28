@@ -10,3 +10,9 @@ export const PlayerSchema = z.object({
 });
 
 export type Player = z.infer<typeof PlayerSchema>;
+
+
+export const VerifyPlayer = z.object({
+  name: z.string(),
+  roomId: z.string().length(6).toUpperCase(),
+});

@@ -1,16 +1,12 @@
-import { Router, Request, Response } from "express";
+import { Router } from "express";
+import { createRoom, joinRoom } from "../controllers/room.controller";
 
-const userRouter = Router();
+const router = Router();
 
-// This matches GET /api/users/
-userRouter.get("/mue", (req: Request, res: Response) => {
-  res.json({ message: "List of users" });
-});
+// POST /api/rooms/create
+router.post("/create", createRoom);
 
-// This matches POST /api/users/
-userRouter.post("/", (req: Request, res: Response) => {
-  const { name } = req.body;
-  res.status(201).json({ user: name });
-});
+// GET /api/rooms/join/:roomId (The "Link" validator)
+router.get("/join/:roomId", joinRoom);
 
-export default userRouter;
+export default router;
