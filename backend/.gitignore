@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment Variables (CRITICAL: Do not commit these)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+
+# Build and Compilation
+dist/
+build/
+out/
+.next/
+.cache/
+
+# Testing
+coverage/
+.nyc_output
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# IDE Settings
+.vscode/
+.idea/
