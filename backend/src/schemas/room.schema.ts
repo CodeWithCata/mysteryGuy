@@ -28,3 +28,8 @@ export const JoinRoomSchema = z.object({
   name: z.string().min(2).max(15).trim(),
   roomId: z.string().length(6).toUpperCase(),
 });
+
+export const SocketJoinSchema = z.object({
+  roomId: z.string().length(6).toUpperCase(),
+  playerId: z.string().uuid(),
+});
