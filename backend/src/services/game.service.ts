@@ -75,13 +75,12 @@ export async function castVote(
 
   const voter = room.players.find((p) => p.id === voterId);
   if (!voter) throw new Error("Voter not found in this room.");
-  if (!voter.isAlive) throw new Error("Dead players cannot vote.");
+  if (!voter.online) throw new Error("Offline players cannot vote.");
   if (voter.votedFor !== null) throw new Error("You have already voted.");
   if (voterId === targetId) throw new Error("You cannot vote for yourself.");
 
   const target = room.players.find((p) => p.id === targetId);
   if (!target) throw new Error("Target player not found.");
-  if (!target.isAlive) throw new Error("You cannot vote for a dead player.");
 
   // ── Register vote ─────────────────────────────────────────────────────────
 
@@ -90,8 +89,8 @@ export async function castVote(
 
   // ── Check if all alive players have voted ─────────────────────────────────
 
-  const alivePlayers = room.players.filter((p) => p.isAlive);
-  const allVoted = alivePlayers.every((p) => p.votedFor !== null);
+ 
+  const allVoted = room.players.every((p) => p.votedFor !== null);
 
   if (!allVoted) {
     // More votes still expected — just return current state
@@ -101,7 +100,7 @@ export async function castVote(
   // ── Tally votes ───────────────────────────────────────────────────────────
 
   const tally: Record<string, number> = {};
-  alivePlayers.forEach((p) => {
+  room.players.forEach((p) => {
     if (p.votedFor) {
       tally[p.votedFor] = (tally[p.votedFor] || 0) + 1;
     }
@@ -120,7 +119,6 @@ export async function castVote(
   // Eliminate the player with most votes
   const eliminatedId = topCandidates[0];
   const eliminated = room.players.find((p) => p.id === eliminatedId)!;
-  eliminated.isAlive = false;
 
   await setRoom(roomId, room);
 
@@ -140,7 +138,7 @@ export async function handlePlayerDisconnect(
 
   if (room.status === "PLAYING" || room.status === "VOTING") {
     const player = room.players.find((p) => p.id === playerId);
-    if (player) player.isAlive = false;
+    if (player) player.online = false;
 
     await setRoom(roomId, room);
     return { room, newHostId: null, wasHostMigrated: false };

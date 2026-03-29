@@ -15,7 +15,6 @@ export const setupGameRound = (players: Player[], wordData: GameWord) => {
     return {
       ...player,
       isImpostor: isImpostor,
-      isAlive: true, 
       
       // The Core Mechanic:
       // If they are the Impostor, give them the category as a hint (e.g., "Fruit").
