@@ -74,4 +74,14 @@ export function registerGameHandlers(io: Server, socket: Socket): void {
       }
     })
   );
+
+  // ──SHOW RESULTS ──────────────────────────────────────────────────────────────
+  socket.on(
+    "game_ended",
+    safeHandler(socket, async ({ roomId }) => { 
+
+
+
+ } ))
+
 }

@@ -5,7 +5,7 @@ import { Player } from "../schemas/player.schema";
 import { startDiscussionTimer, clearRoomTimers } from "./timer.service";
 import { Server } from "socket.io";
 import { setRoom, getRoomData, deleteRoom } from "../lib/redis.helpers";
-
+import { PlayerSchema } from "../schemas/player.schema";
 export interface StartGameResult {
   status: Room["status"];
   players: (Player & { assignedWord: string })[];
@@ -124,6 +124,33 @@ export async function castVote(
 
   return { room, allVoted: true, eliminated };
 }
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function endGame(io: Server, roomId: string): Promise<void> {
+  clearRoomTimers(roomId);
+
+  const impostor = await getRoom(roomId).then((room) =>
+    room.players.find((p) => p.isImpostor)
+  );
+  const validation = PlayerSchema.safeParse(impostor);
+  if (!validation.success) {
+    console.error("Invalid impostor data:", validation.error.format());
+    throw new Error("Internal error: Invalid impostor data.");
+  }
+  const {id,isImpostor} = validation.data;
+  
+  io.to(roomId).emit("game_ended", { message: "Game has ended. Thanks for playing!" });
+
+
+}
+
+
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 
