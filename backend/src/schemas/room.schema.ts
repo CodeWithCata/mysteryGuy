@@ -13,7 +13,6 @@ export const RoomSchema = z.object({
   // The settings JSON you provided
   settings: GameSettingsSchema, 
   word:GameWordSchema.nullable(),
-  
   createdAt: z.number().default(() => Date.now()), // Auto-generate timestamp
 });
 

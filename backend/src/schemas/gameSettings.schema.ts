@@ -10,7 +10,6 @@ export const GameSettingsSchema = z.object({
     difficulty: DifficultyEnum.default(DEFAULT_DIFFICULTY),
     selectedCategory: z.string().default("All"),
     impostorCount: z.number().min(1).max(3).default(1),
-    revealRoleOnElimination: z.boolean().default(true),
   }),
   timers: z.object({
     lobbyWaitTime: z.number().min(5).max(120).default(30),

@@ -18,6 +18,12 @@ export interface MigrateHostResult {
   wasHostMigrated: boolean;
 }
 
+export interface CastVoteResult {
+  room: Room;
+  allVoted: boolean;
+  eliminated: Player | null; // null = tie, no one eliminated
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function startGame(
@@ -31,10 +37,10 @@ export async function startGame(
   if (room.status !== "LOBBY") throw new Error("Game has already started.");
   if (room.players.length < 3) throw new Error("At least 3 players are required to start.");
 
- const wordData = await getRandomWordPair(
-  room.settings.gameplay.difficulty,
-  room.settings.gameplay.selectedCategory
-);
+  const wordData = await getRandomWordPair(
+    room.settings.gameplay.difficulty,
+    room.settings.gameplay.selectedCategory
+  );
 
   const { players } = setupGameRound(room.players, wordData);
 
@@ -43,7 +49,6 @@ export async function startGame(
   room.word = wordData;
 
   await setRoom(roomId, room);
-
   startDiscussionTimer(io, roomId, room.settings.timers.discussionDuration);
 
   return {
@@ -51,6 +56,75 @@ export async function startGame(
     status: room.status,
     players: room.players as (Player & { assignedWord: string })[],
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function castVote(
+  roomId: string,
+  voterId: string,
+  targetId: string
+): Promise<CastVoteResult> {
+  const room = await getRoom(roomId);
+
+  // ── Guards ────────────────────────────────────────────────────────────────
+
+  if (room.status !== "VOTING") {
+    throw new Error("Voting is not open right now.");
+  }
+
+  const voter = room.players.find((p) => p.id === voterId);
+  if (!voter) throw new Error("Voter not found in this room.");
+  if (!voter.isAlive) throw new Error("Dead players cannot vote.");
+  if (voter.votedFor !== null) throw new Error("You have already voted.");
+  if (voterId === targetId) throw new Error("You cannot vote for yourself.");
+
+  const target = room.players.find((p) => p.id === targetId);
+  if (!target) throw new Error("Target player not found.");
+  if (!target.isAlive) throw new Error("You cannot vote for a dead player.");
+
+  // ── Register vote ─────────────────────────────────────────────────────────
+
+  voter.votedFor = targetId;
+  await setRoom(roomId, room);
+
+  // ── Check if all alive players have voted ─────────────────────────────────
+
+  const alivePlayers = room.players.filter((p) => p.isAlive);
+  const allVoted = alivePlayers.every((p) => p.votedFor !== null);
+
+  if (!allVoted) {
+    // More votes still expected — just return current state
+    return { room, allVoted: false, eliminated: null };
+  }
+
+  // ── Tally votes ───────────────────────────────────────────────────────────
+
+  const tally: Record<string, number> = {};
+  alivePlayers.forEach((p) => {
+    if (p.votedFor) {
+      tally[p.votedFor] = (tally[p.votedFor] || 0) + 1;
+    }
+  });
+
+  const maxVotes = Math.max(...Object.values(tally));
+  const topCandidates = Object.keys(tally).filter(
+    (id) => tally[id] === maxVotes
+  );
+
+  // Tie — no one gets eliminated
+  if (topCandidates.length > 1) {
+    return { room, allVoted: true, eliminated: null };
+  }
+
+  // Eliminate the player with most votes
+  const eliminatedId = topCandidates[0];
+  const eliminated = room.players.find((p) => p.id === eliminatedId)!;
+  eliminated.isAlive = false;
+
+  await setRoom(roomId, room);
+
+  return { room, allVoted: true, eliminated };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +138,6 @@ export async function handlePlayerDisconnect(
 
   const room = RoomSchema.parse(raw);
 
-  // During active game: mark as not alive, don't remove
   if (room.status === "PLAYING" || room.status === "VOTING") {
     const player = room.players.find((p) => p.id === playerId);
     if (player) player.isAlive = false;
@@ -73,7 +146,6 @@ export async function handlePlayerDisconnect(
     return { room, newHostId: null, wasHostMigrated: false };
   }
 
-  // In LOBBY: remove entirely
   room.players = room.players.filter((p) => p.id !== playerId);
 
   if (room.players.length === 0) {

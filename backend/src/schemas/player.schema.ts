@@ -6,6 +6,7 @@ export const PlayerSchema = z.object({
   isHost: z.boolean().default(false),
   isAlive: z.boolean().default(true),
   isImpostor: z.boolean().default(false),
+  votedFor: z.string().uuid().nullable().default(null),
   score: z.number().int().nonnegative().default(0),
 });
 

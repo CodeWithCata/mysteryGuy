@@ -1,13 +1,11 @@
 import { Server, Socket } from "socket.io";
-import { startGame } from "../../services/game.service";
+import { startGame, castVote } from "../../services/game.service";
+import { VoteEventSchema } from "../../schemas/game.schema";
 import { safeHandler } from "../utils/safeHandler";
 
 export function registerGameHandlers(io: Server, socket: Socket): void {
 
   // ── START GAME ─────────────────────────────────────────────────────────────
-  // io is passed to startGame so it can fire the discussion timer internally.
-  // phase_started (DISCUSSION + duration) is emitted inside startDiscussionTimer
-  // automatically — no extra emit needed here.
   socket.on(
     "start_game",
     safeHandler(socket, async ({ roomId, playerId }) => {
@@ -17,8 +15,63 @@ export function registerGameHandlers(io: Server, socket: Socket): void {
         status: result.status,
         players: result.players,
       });
+      // phase_started is emitted automatically inside startDiscussionTimer
     })
   );
 
-  // cast_vote, guess_word, and other game events go here as you build them
+  // ── CAST VOTE ──────────────────────────────────────────────────────────────
+  socket.on(
+    "cast_vote",
+    safeHandler(socket, async (data) => {
+      // Validate payload shape with existing VoteEventSchema
+      const validation = VoteEventSchema.safeParse(data);
+      if (!validation.success) {
+        socket.emit("error", { message: "Invalid vote format." });
+        return;
+      }
+
+      const { voterId, targetId } = validation.data;
+
+      // VoteEventSchema only has voterId + targetId — roomId comes separately
+      const { roomId } = data;
+      if (!roomId) {
+        socket.emit("error", { message: "roomId is required." });
+        return;
+      }
+
+      const { room, allVoted, eliminated } = await castVote(
+        roomId,
+        voterId,
+        targetId
+      );
+
+      // Always broadcast the updated player list so everyone sees who voted
+      io.to(roomId).emit("vote_cast", {
+        players: room.players,
+        voterId,
+      });
+
+      // If not everyone voted yet — done for now
+      if (!allVoted) return;
+
+      // All votes in — broadcast the elimination result
+      if (!eliminated) {
+        // Tie — no elimination
+        io.to(roomId).emit("vote_result", {
+          eliminated: null,
+          message: "It's a tie! No one was eliminated.",
+          players: room.players,
+        });
+      } else {
+        io.to(roomId).emit("vote_result", {
+          eliminated: {
+            id: eliminated.id,
+            name: eliminated.name,
+            wasImpostor: eliminated.isImpostor,
+          },
+          players: room.players,
+        });
+      }
+    })
+  );
 }
