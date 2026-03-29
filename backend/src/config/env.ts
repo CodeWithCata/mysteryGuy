@@ -33,5 +33,5 @@ if (!parsed.success) {
 // Export the validated data
 export const env = parsed.data;
 
-// Export the type so you can use it elsewhere if needed
+
 export type Env = z.infer<typeof envSchema>;

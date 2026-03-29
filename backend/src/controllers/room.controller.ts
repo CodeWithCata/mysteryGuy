@@ -1,15 +1,14 @@
 import { Request, Response } from "express";
-import { redis } from "../lib/redis";
 import { CreateRoomSchema, Room } from "../schemas/room.schema";
-import { Player } from "../schemas/player.schema"; // Assuming this is where it's exported
+import { Player } from "../schemas/player.schema";
 import { nanoid } from "nanoid";
 import { randomUUID } from "crypto";
-import {GameSettings, GameSettingsSchema} from "../schemas/gameSettings.schema";
 import { PlayerSchema } from "../schemas/player.schema";
 import { JoinRoomSchema } from "../schemas/room.schema";
 import { RoomService } from "../services/room.service";
+import { setRoom, getRoomData } from "../lib/redis.helpers";
+
 export const createRoom = async (req: Request, res: Response) => {
-  // 1. Validate Input (HostName and Settings from Dropdown)
   const validation = CreateRoomSchema.safeParse(req.body);
   if (!validation.success) {
     return res.status(400).json({ error: validation.error.format() });
@@ -22,12 +21,12 @@ export const createRoom = async (req: Request, res: Response) => {
   const hostPlayer: Player = PlayerSchema.parse({
     id: hostId,
     name: hostName,
-    isHost: true, 
-  }); 
+    isHost: true,
+  });
 
   const newRoom: Room = {
     roomId,
-    hostId, 
+    hostId,
     status: "LOBBY",
     players: [hostPlayer],
     settings,
@@ -35,32 +34,17 @@ export const createRoom = async (req: Request, res: Response) => {
     createdAt: Date.now(),
   };
 
+  await setRoom(roomId, newRoom);
 
- 
-
-
-
-  // 4. Persistence
-  await redis.setex(`room:${roomId}`, 86400, JSON.stringify(newRoom));
-
-  // 5. Response
-  res.status(201).json({ 
-    roomId, 
-    hostId, 
+  res.status(201).json({
+    roomId,
+    hostId,
     player: hostPlayer,
-    message: "Room created successfully." 
+    message: "Room created successfully.",
   });
 };
 
-
-
-
-
-// controllers/room.controller.ts
-
-
 export const joinRoom = async (req: Request, res: Response) => {
-  // 1. Validate Shape (Zod)
   const validation = JoinRoomSchema.safeParse(req.body);
   if (!validation.success) {
     return res.status(400).json({ error: validation.error.format() });
@@ -69,19 +53,15 @@ export const joinRoom = async (req: Request, res: Response) => {
   const { name, roomId } = validation.data;
 
   try {
-    // 2. Fetch
-    const roomKey = `room:${roomId}`;
-    const roomData = await redis.get(roomKey);
-    if (!roomData) return res.status(404).json({ error: "Room not found." });
+    const raw = await getRoomData(roomId);
+    if (!raw) return res.status(404).json({ error: "Room not found." });
 
-    const room: Room = JSON.parse(roomData);
+    const room: Room = raw;
 
-    // 3. Business Logic (Clean Service Calls)
     RoomService.ensureRoomIsJoinable(room);
     RoomService.ensureRoomIsNotFull(room);
     RoomService.ensureNameIsUnique(room, name);
 
-    // 4. Action
     const newPlayer = PlayerSchema.parse({
       id: randomUUID(),
       name,
@@ -89,17 +69,14 @@ export const joinRoom = async (req: Request, res: Response) => {
     });
 
     room.players.push(newPlayer);
-    await redis.setex(roomKey, 86400, JSON.stringify(room));
+    await setRoom(roomId, room);
 
-    // 5. Response
     res.status(200).json({
       roomId: room.roomId,
       playerId: newPlayer.id,
       player: newPlayer,
     });
-    
   } catch (error: any) {
-    // This catches the "throw new Error" from the service
     return res.status(400).json({ error: error.message });
   }
 };

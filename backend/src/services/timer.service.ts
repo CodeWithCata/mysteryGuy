@@ -1,12 +1,11 @@
 import { Server } from "socket.io";
-import { redis } from "../lib/redis";
 import { RoomSchema } from "../schemas/room.schema";
+import { getRoomData, setRoom } from "../lib/redis.helpers";
 
 // In-memory map: roomId → active timer
-// Lives in the Node.js process — survives for the lifetime of the server
 const activeTimers = new Map<string, NodeJS.Timeout>();
 
-// ─── Cancel a room's active timer (call before starting a new one) ────────────
+// ─── Cancel a room's active timer ─────────────────────────────────────────────
 export function cancelTimer(roomId: string): void {
   if (activeTimers.has(roomId)) {
     clearTimeout(activeTimers.get(roomId)!);
@@ -15,39 +14,33 @@ export function cancelTimer(roomId: string): void {
   }
 }
 
-// ─── Start the discussion phase timer ────────────────────────────────────────
-// When it expires → automatically transitions to VOTING
-export function startDiscussionTimer(io: Server, roomId: string, durationSeconds: number): void {
-  cancelTimer(roomId); // double-start protection
+// ─── Discussion phase timer ───────────────────────────────────────────────────
+export function startDiscussionTimer(
+  io: Server,
+  roomId: string,
+  durationSeconds: number
+): void {
+  cancelTimer(roomId);
 
   console.log(`💬 Discussion timer started for room ${roomId} (${durationSeconds}s)`);
 
-  // Broadcast to all clients how long the discussion phase lasts
-  io.to(roomId).emit("phase_started", {
-    phase: "DISCUSSION",
-    durationSeconds,
-  });
+  io.to(roomId).emit("phase_started", { phase: "DISCUSSION", durationSeconds });
 
   const timerId = setTimeout(async () => {
     activeTimers.delete(roomId);
-
     try {
-      const roomData = await redis.get(`room:${roomId}`);
-      if (!roomData) return;
+      const raw = await getRoomData(roomId);
+      if (!raw) return;
 
-      const room = RoomSchema.parse(JSON.parse(roomData));
-
-      // Guard: only transition if still in PLAYING
+      const room = RoomSchema.parse(raw);
       if (room.status !== "PLAYING") return;
 
       room.status = "VOTING";
-      await redis.setex(`room:${roomId}`, 86400, JSON.stringify(room));
+      await setRoom(roomId, room);
 
       console.log(`🗳️  Discussion ended — room ${roomId} moved to VOTING`);
 
-      // Start the voting timer immediately
       startVotingTimer(io, roomId, room.settings.timers.votingDuration);
-
     } catch (error) {
       console.error(`[TimerService] Discussion timer error for room ${roomId}:`, error);
     }
@@ -56,35 +49,29 @@ export function startDiscussionTimer(io: Server, roomId: string, durationSeconds
   activeTimers.set(roomId, timerId);
 }
 
-// ─── Start the voting phase timer ────────────────────────────────────────────
-// When it expires → emit vote_ended so game.service can tally results
-export function startVotingTimer(io: Server, roomId: string, durationSeconds: number): void {
-  cancelTimer(roomId); // double-start protection
+// ─── Voting phase timer ───────────────────────────────────────────────────────
+export function startVotingTimer(
+  io: Server,
+  roomId: string,
+  durationSeconds: number
+): void {
+  cancelTimer(roomId);
 
   console.log(`🗳️  Voting timer started for room ${roomId} (${durationSeconds}s)`);
 
-  io.to(roomId).emit("phase_started", {
-    phase: "VOTING",
-    durationSeconds,
-  });
+  io.to(roomId).emit("phase_started", { phase: "VOTING", durationSeconds });
 
   const timerId = setTimeout(async () => {
     activeTimers.delete(roomId);
-
     try {
-      const roomData = await redis.get(`room:${roomId}`);
-      if (!roomData) return;
+      const raw = await getRoomData(roomId);
+      if (!raw) return;
 
-      const room = RoomSchema.parse(JSON.parse(roomData));
-
-      // Guard: only fire if still in VOTING
+      const room = RoomSchema.parse(raw);
       if (room.status !== "VOTING") return;
 
       console.log(`⏰ Voting timer expired for room ${roomId}`);
-
-      // Signal the socket handler to tally votes and resolve the round
       io.to(roomId).emit("vote_ended", { roomId });
-
     } catch (error) {
       console.error(`[TimerService] Voting timer error for room ${roomId}:`, error);
     }
@@ -93,7 +80,7 @@ export function startVotingTimer(io: Server, roomId: string, durationSeconds: nu
   activeTimers.set(roomId, timerId);
 }
 
-// ─── Clean up all timers for a room (call on FINISHED or room deletion) ───────
+// ─── Clean up all timers for a room ──────────────────────────────────────────
 export function clearRoomTimers(roomId: string): void {
   cancelTimer(roomId);
   console.log(`🧹 All timers cleared for room ${roomId}`);
