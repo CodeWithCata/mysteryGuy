@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { randomUUID } from "crypto";
 import { PlayerSchema } from "../schemas/player.schema";
 import { JoinRoomSchema } from "../schemas/room.schema";
-import { RoomService } from "../services/room.service";
+import { ensureNameIsUnique, ensureRoomIsNotFull,ensureRoomIsJoinable } from "../services/room.service";
 import { setRoom, getRoomData } from "../lib/redis.helpers";
 
 export const createRoom = async (req: Request, res: Response) => {
@@ -58,9 +58,9 @@ export const joinRoom = async (req: Request, res: Response) => {
 
     const room: Room = raw;
 
-    RoomService.ensureRoomIsJoinable(room);
-    RoomService.ensureRoomIsNotFull(room);
-    RoomService.ensureNameIsUnique(room, name);
+    ensureNameIsUnique (room, name);
+    ensureRoomIsNotFull(room);
+    ensureRoomIsJoinable(room);
 
     const newPlayer = PlayerSchema.parse({
       id: randomUUID(),
