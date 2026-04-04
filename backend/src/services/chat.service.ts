@@ -1,5 +1,5 @@
 import { getRoom } from "./room.service";
-import { ChatMessageSchema } from "@/schemas/chat.schema";
+import { ChatMessageSchema } from "@shared/index";
 
 export interface ChatResult {
   playerId:   string;

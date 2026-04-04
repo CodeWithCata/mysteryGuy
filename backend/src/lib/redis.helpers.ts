@@ -1,5 +1,5 @@
 import { redis } from "./redis";
-import { Room } from "../schemas/room.schema";
+import { Room } from "@shared/index";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ROOM_TTL_SECONDS = 86400;    // 24 hours

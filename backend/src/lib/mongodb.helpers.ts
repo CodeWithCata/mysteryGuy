@@ -1,6 +1,5 @@
-import { WordModel } from "../models/word.model";
-import { GameWord } from "../schemas/word.schema";
-import { Difficulty } from "../schemas/constants.schema";
+import { WordModel } from "@/models/word.model";
+import { GameWord, Difficulty } from "@shared/index";
 
 // ─── Filter builder ───────────────────────────────────────────────────────────
 export interface WordFilter {

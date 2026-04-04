@@ -1,12 +1,26 @@
 import { Request, Response } from "express";
-import { CreateRoomSchema, Room } from "../schemas/room.schema";
-import { Player } from "../schemas/player.schema";
 import { nanoid } from "nanoid";
 import { randomUUID } from "crypto";
-import { PlayerSchema } from "../schemas/player.schema";
-import { JoinRoomSchema } from "../schemas/room.schema";
-import { ensureNameIsUnique, ensureRoomIsNotFull,ensureRoomIsJoinable } from "../services/room.service";
-import { setRoom, getRoomData } from "../lib/redis.helpers";
+
+// --- Shared Schemas & Types ---
+// We pull everything from the shared index now
+import { 
+  CreateRoomSchema, 
+  Room, 
+  Player, 
+  PlayerSchema, 
+  JoinRoomSchema 
+} from "@shared/index";
+
+// --- Backend Services & Helpers ---
+// Using your @ alias for internal backend files
+import { 
+  ensureNameIsUnique, 
+  ensureRoomIsNotFull, 
+  ensureRoomIsJoinable 
+} from "@/services/room.service";
+
+import { setRoom, getRoomData } from "@/lib/redis.helpers";
 
 export const createRoom = async (req: Request, res: Response) => {
   const validation = CreateRoomSchema.safeParse(req.body);

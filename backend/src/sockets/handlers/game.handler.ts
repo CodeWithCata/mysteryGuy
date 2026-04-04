@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { startGame, castVote, guessWord, endGame } from "@/services/game.service";
-import { VoteEventSchema, GuessWordSchema } from "@/schemas/game.schema";
+import { VoteEventSchema, GuessWordSchema } from "@shared/index";
 import { safeHandler } from "@/sockets/utils/safeHandler";
 
 export function registerGameHandlers(io: Server, socket: Socket): void {

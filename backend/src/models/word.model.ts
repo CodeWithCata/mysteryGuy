@@ -1,5 +1,5 @@
 import { Schema, model } from "mongoose";
-import { GameWord } from "../schemas/word.schema"; // Import the type you created
+import { GameWord } from "@shared/index";
 
 // Define the Mongoose schema
 const wordSchema = new Schema<GameWord>({

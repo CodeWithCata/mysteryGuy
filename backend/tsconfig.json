@@ -4,7 +4,10 @@
     "module": "CommonJS",
     "lib": ["ES2022"],
     "outDir": "dist",
-    "rootDir": "src",
+    
+    // CHANGE THIS LINE:
+    "rootDir": "..",
+
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,12 +15,12 @@
     "forceConsistentCasingInFileNames": true,
 
     "ignoreDeprecations": "6.0", 
-
     "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@shared/*": ["../shared/*"] 
     }
   },
-  "include": ["src"],
+  "include": ["src", "../shared"],
   "exclude": ["node_modules", "dist"]
 }

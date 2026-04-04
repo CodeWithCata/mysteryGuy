@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { SocketJoinSchema } from "@/schemas/room.schema";
+import { Player, SocketJoinSchema } from "@shared/index";
 import { getRoom, handlePlayerDisconnect, resetRoom } from "@/services/room.service";
 import { setSocketMapping, getSocketMapping, deleteSocketMapping } from "@/lib/redis.helpers";
 import { safeHandler } from "@/sockets/utils/safeHandler";
@@ -18,7 +18,7 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
 
       const { roomId, playerId } = validation.data;
       const room   = await getRoom(roomId);
-      const player = room.players.find((p) => p.id === playerId);
+      const player = room.players.find((p : Player) => p.id === playerId);
 
       if (!player) {
         socket.emit("error", { message: "Player not found in this room" });

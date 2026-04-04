@@ -1,7 +1,10 @@
 import { Server } from "socket.io";
-import { RoomSchema } from "@/schemas/room.schema";
+
+// --- Shared Schemas & Types ---
+import { RoomSchema, Player } from "@shared/index";
+
+// --- Backend Internal Logic & Helpers ---
 import { getRoomData, setRoom } from "@/lib/redis.helpers";
-import { Player } from "@/schemas/player.schema";
 import { calculateScores, selectHint } from "@/core/game.logic";
 
 // Main phase timers: one per room (discussion → voting)

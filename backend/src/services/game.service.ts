@@ -1,14 +1,31 @@
-import { Room } from "@/schemas/room.schema";
-import { getRandomWordPair } from "./word.service";
-import { setupGameRound, processVotes, resolveGuess, calculateScores, ScoreContext } from "@/core/game.logic";
-import { Player } from "@/schemas/player.schema";
-import { startDiscussionTimer, startHintTimer, clearRoomTimers } from "./timer.service";
 import { Server } from "socket.io";
+
+// --- Shared Schemas & Types ---
+// All these now come from your new shared directory
+import { 
+  Room, 
+  Player, 
+  GuessWordSchema 
+} from "@shared/index";
+
+// --- Internal Game Logic ---
+import { 
+  setupGameRound, 
+  processVotes, 
+  resolveGuess, 
+  calculateScores, 
+  ScoreContext 
+} from "@/core/game.logic";
+
+// --- Internal Services & Helpers ---
+import { getRandomWordPair } from "./word.service";
+import { 
+  startDiscussionTimer, 
+  startHintTimer, 
+  clearRoomTimers 
+} from "./timer.service";
 import { getRoom } from "./room.service";
 import { setRoom } from "@/lib/redis.helpers";
-import { GuessWordSchema } from "@/schemas/game.schema";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface StartGameResult {
   status:  Room["status"];
@@ -92,13 +109,13 @@ export async function castVote(
 
   if (room.status !== "VOTING") throw new Error("Voting is not open right now.");
 
-  const voter = room.players.find((p) => p.id === voterId);
+  const voter = room.players.find((p :Player) => p.id === voterId);
   if (!voter)                  throw new Error("Voter not found in this room.");
   if (!voter.online)           throw new Error("Offline players cannot vote.");
   if (voter.votedFor !== null) throw new Error("You have already voted.");
   if (voterId === targetId)    throw new Error("You cannot vote for yourself.");
 
-  const target = room.players.find((p) => p.id === targetId);
+  const target = room.players.find((p :Player) => p.id === targetId);
   if (!target) throw new Error("Target player not found.");
 
   voter.votedFor = targetId;
@@ -106,7 +123,7 @@ export async function castVote(
   const { allVoted, eliminatedId } = processVotes(room.players);
 
   const eliminated = allVoted && eliminatedId
-    ? room.players.find((p) => p.id === eliminatedId) ?? null
+    ? room.players.find((p :Player) => p.id === eliminatedId) ?? null
     : null;
 
   await setRoom(roomId, room);
@@ -131,7 +148,7 @@ export async function guessWord(
   if (!room.settings.mechanics.allowImpostorGuess)
     throw new Error("Impostor guessing is disabled in this room.");
 
-  const player = room.players.find((p) => p.id === playerId);
+  const player = room.players.find((p :Player) => p.id === playerId);
   if (!player)            throw new Error("Player not found in this room.");
   if (!player.isImpostor) throw new Error("Only the impostor can guess the word.");
   if (!player.online)     throw new Error("Offline players cannot guess.");
@@ -156,7 +173,7 @@ export async function endGame(
   // Guard: prevent double-ending if timer and last vote race each other
   if (room.status === "FINISHED") return;
 
-  const impostor = room.players.find((p) => p.isImpostor);
+  const impostor = room.players.find((p :Player) => p.isImpostor);
   if (!impostor)  throw new Error("Internal error: No impostor found.");
   if (!room.word) throw new Error("Internal error: No word data found.");
 

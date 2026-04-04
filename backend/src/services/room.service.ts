@@ -1,4 +1,4 @@
-import { Room, RoomSchema } from "@/schemas/room.schema";
+import { Player, Room, RoomSchema } from "@shared/index";
 import { getRoomData, setRoom, deleteRoom } from "@/lib/redis.helpers";
 import { clearRoomTimers } from "@/services/timer.service";
 import { resetPlayers } from "@/core/game.logic";
@@ -7,7 +7,7 @@ import { resetPlayers } from "@/core/game.logic";
 
 export const ensureNameIsUnique = (room: Room, name: string): void => {
   const isTaken = room.players.some(
-    (p) => p.name.toLowerCase() === name.toLowerCase()
+    (p : Player) => p.name.toLowerCase() === name.toLowerCase()
   );
   if (isTaken) throw new Error("This name is already taken in this room.");
 };
@@ -40,13 +40,13 @@ export async function handlePlayerDisconnect(
   const room = RoomSchema.parse(raw);
 
   if (room.status === "PLAYING" || room.status === "VOTING") {
-    const player = room.players.find((p) => p.id === playerId);
+    const player = room.players.find((p :Player) => p.id === playerId);
     if (player) player.online = false;
     await setRoom(roomId, room);
     return { room, newHostId: null, wasHostMigrated: false };
   }
 
-  room.players = room.players.filter((p) => p.id !== playerId);
+  room.players = room.players.filter((p: Player) => p.id !== playerId);
 
   if (room.players.length === 0) {
     await deleteRoom(roomId);
