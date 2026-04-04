@@ -1,5 +1,5 @@
 import { getRoom } from "./room.service";
-import { ChatMessageSchema } from "@shared/index";
+import { ChatMessageSchema, Player } from "@shared/index";
 
 export interface ChatResult {
   playerId:   string;
@@ -21,7 +21,7 @@ export async function sendMessage(
   if (room.status !== "PLAYING")
     throw new Error("Chat is only available during the discussion phase.");
 
-  const player = room.players.find((p) => p.id === playerId);
+  const player = room.players.find((p : Player) => p.id === playerId);
   if (!player)        throw new Error("Player not found in this room.");
   if (!player.online) throw new Error("Offline players cannot send messages.");
 
