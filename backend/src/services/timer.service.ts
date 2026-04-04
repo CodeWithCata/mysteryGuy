@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
-import { RoomSchema } from "../schemas/room.schema";
-import { getRoomData, setRoom } from "../lib/redis.helpers";
+import { RoomSchema } from "@/schemas/room.schema";
+import { getRoomData, setRoom } from "@/lib/redis.helpers";
 
 // In-memory map: roomId → active timer
 const activeTimers = new Map<string, NodeJS.Timeout>();

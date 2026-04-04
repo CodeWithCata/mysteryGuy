@@ -1,10 +1,10 @@
 import http from "http";
 import { Server } from "socket.io";
-import { createApp } from "./app";
-import { env } from "./config/env";
-import { connectDB } from "./lib/mongodb";
-import { redis } from "./lib/redis";
-import { setupSocketHandlers } from "./sockets/socketHandler";
+import { createApp } from "@/app";
+import { env } from "@/config/env";
+import { connectDB } from "@/lib/mongodb";
+import { redis } from "@/lib/redis";
+import { setupSocketHandlers } from "@/sockets/socketHandler";
 
 const app = createApp();
 const httpServer = http.createServer(app);

@@ -3,10 +3,10 @@
 import express from "express";
 
 
-import router from "./router/routes";
+import router from "@/router/routes";
 
 import cors from "cors";
-import { env } from "./config/env";
+import { env } from "@/config/env";
 
 export function createApp() {
 

@@ -1,6 +1,6 @@
-import { GameWord } from "../schemas/word.schema";
-import { Difficulty } from "../schemas/constants.schema";
-import { getRandomWord, getDistinctCategories, wordExists as checkWordExists } from "../lib/mongodb.helpers";
+import { GameWord } from "@/schemas/word.schema";
+import { Difficulty } from "@/schemas/constants.schema";
+import { getRandomWord, getDistinctCategories, wordExists as checkWordExists } from "@/lib/mongodb.helpers";
 
 export async function getRandomWordPair(
   difficulty?: Difficulty,

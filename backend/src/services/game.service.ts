@@ -1,10 +1,13 @@
-import { RoomSchema, Room } from "../schemas/room.schema";
+import { RoomSchema, Room } from "@/schemas/room.schema";
 import { getRandomWordPair } from "./word.service";
-import { setupGameRound } from "../core/game.logic";
-import { Player } from "../schemas/player.schema";
+import { setupGameRound,processVotes } from "@/core/game.logic";
+import { Player } from "@/schemas/player.schema";
 import { startDiscussionTimer, clearRoomTimers } from "./timer.service";
 import { Server } from "socket.io";
-import { setRoom, getRoomData, deleteRoom } from "../lib/redis.helpers";
+import { getRoom } from "./room.service";
+import { setRoom } from "@/lib/redis.helpers";
+
+
 import { PlayerSchema } from "../schemas/player.schema";
 export interface StartGameResult {
   status: Room["status"];
@@ -12,11 +15,7 @@ export interface StartGameResult {
   roomId: string;
 }
 
-export interface MigrateHostResult {
-  room: Room | null;
-  newHostId: string | null;
-  wasHostMigrated: boolean;
-}
+
 
 export interface CastVoteResult {
   room: Room;
@@ -67,8 +66,7 @@ export async function castVote(
 ): Promise<CastVoteResult> {
   const room = await getRoom(roomId);
 
-  // ── Guards ────────────────────────────────────────────────────────────────
-
+  // ── 1. Guards ──────────────────────────────────────────────────────────────
   if (room.status !== "VOTING") {
     throw new Error("Voting is not open right now.");
   }
@@ -82,47 +80,28 @@ export async function castVote(
   const target = room.players.find((p) => p.id === targetId);
   if (!target) throw new Error("Target player not found.");
 
-  // ── Register vote ─────────────────────────────────────────────────────────
-
+  // ── 2. Register vote ───────────────────────────────────────────────────────
   voter.votedFor = targetId;
-  await setRoom(roomId, room);
 
-  // ── Check if all alive players have voted ─────────────────────────────────
+  // ── 3. Tally & Process (Core Logic) ────────────────────────────────────────
+  const { allVoted, eliminatedId } = processVotes(room.players);
 
- 
-  const allVoted = room.players.every((p) => p.votedFor !== null);
+  // ── 4. Handle Results ──────────────────────────────────────────────────────
+  let eliminated = null;
 
-  if (!allVoted) {
-    // More votes still expected — just return current state
-    return { room, allVoted: false, eliminated: null };
+  if (allVoted && eliminatedId) {
+    eliminated = room.players.find((p) => p.id === eliminatedId) || null;
+    // Note: If you want to mark them as 'out' in the state, do it here.
   }
 
-  // ── Tally votes ───────────────────────────────────────────────────────────
-
-  const tally: Record<string, number> = {};
-  room.players.forEach((p) => {
-    if (p.votedFor) {
-      tally[p.votedFor] = (tally[p.votedFor] || 0) + 1;
-    }
-  });
-
-  const maxVotes = Math.max(...Object.values(tally));
-  const topCandidates = Object.keys(tally).filter(
-    (id) => tally[id] === maxVotes
-  );
-
-  // Tie — no one gets eliminated
-  if (topCandidates.length > 1) {
-    return { room, allVoted: true, eliminated: null };
-  }
-
-  // Eliminate the player with most votes
-  const eliminatedId = topCandidates[0];
-  const eliminated = room.players.find((p) => p.id === eliminatedId)!;
-
+  // ── 5. Persist & Return ────────────────────────────────────────────────────
   await setRoom(roomId, room);
 
-  return { room, allVoted: true, eliminated };
+  return { 
+    room, 
+    allVoted, 
+    eliminated 
+  };
 }
 
 
@@ -145,58 +124,4 @@ export async function endGame(io: Server, roomId: string): Promise<void> {
   io.to(roomId).emit("game_ended", { message: "Game has ended. Thanks for playing!" });
 
 
-}
-
-
-
-
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function handlePlayerDisconnect(
-  roomId: string,
-  playerId: string
-): Promise<MigrateHostResult> {
-  const raw = await getRoomData(roomId);
-  if (!raw) return { room: null, newHostId: null, wasHostMigrated: false };
-
-  const room = RoomSchema.parse(raw);
-
-  if (room.status === "PLAYING" || room.status === "VOTING") {
-    const player = room.players.find((p) => p.id === playerId);
-    if (player) player.online = false;
-
-    await setRoom(roomId, room);
-    return { room, newHostId: null, wasHostMigrated: false };
-  }
-
-  room.players = room.players.filter((p) => p.id !== playerId);
-
-  if (room.players.length === 0) {
-    await deleteRoom(roomId);
-    clearRoomTimers(roomId);
-    return { room: null, newHostId: null, wasHostMigrated: false };
-  }
-
-  const wasHost = room.hostId === playerId;
-  if (wasHost) {
-    const newHost = room.players[0];
-    newHost.isHost = true;
-    room.hostId = newHost.id;
-
-    await setRoom(roomId, room);
-    return { room, newHostId: newHost.id, wasHostMigrated: true };
-  }
-
-  await setRoom(roomId, room);
-  return { room, newHostId: null, wasHostMigrated: false };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getRoom(roomId: string): Promise<Room> {
-  const raw = await getRoomData(roomId);
-  if (!raw) throw new Error("Room not found.");
-  return RoomSchema.parse(raw);
 }
