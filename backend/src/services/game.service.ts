@@ -1,29 +1,42 @@
-import { RoomSchema, Room } from "@/schemas/room.schema";
+import { Room } from "@/schemas/room.schema";
 import { getRandomWordPair } from "./word.service";
-import { setupGameRound,processVotes } from "@/core/game.logic";
+import { setupGameRound, processVotes, resolveGuess, calculateScores, ScoreContext } from "@/core/game.logic";
 import { Player } from "@/schemas/player.schema";
-import { startDiscussionTimer, clearRoomTimers } from "./timer.service";
+import { startDiscussionTimer, startHintTimer, clearRoomTimers } from "./timer.service";
 import { Server } from "socket.io";
 import { getRoom } from "./room.service";
 import { setRoom } from "@/lib/redis.helpers";
+import { GuessWordSchema } from "@/schemas/game.schema";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-import { PlayerSchema } from "../schemas/player.schema";
 export interface StartGameResult {
-  status: Room["status"];
+  status:  Room["status"];
   players: (Player & { assignedWord: string })[];
-  roomId: string;
+  roomId:  string;
 }
-
-
 
 export interface CastVoteResult {
-  room: Room;
-  allVoted: boolean;
-  eliminated: Player | null; // null = tie, no one eliminated
+  room:      Room;
+  allVoted:  boolean;
+  eliminated: Player | null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+export interface EndGamePayload {
+  impostorId:   string;
+  impostorName: string;
+  secretWord:   string;
+  category:     string;
+  players:      Player[];
+}
+
+export interface GuessWordResult {
+  isCorrect:  boolean;
+  secretWord: string;
+  playerId:   string;
+}
+
+// ─── Start Game ───────────────────────────────────────────────────────────────
 
 export async function startGame(
   io: Server,
@@ -33,8 +46,8 @@ export async function startGame(
   const room = await getRoom(roomId);
 
   if (room.hostId !== playerId) throw new Error("Only the host can start the game.");
-  if (room.status !== "LOBBY") throw new Error("Game has already started.");
-  if (room.players.length < 3) throw new Error("At least 3 players are required to start.");
+  if (room.status !== "LOBBY")  throw new Error("Game has already started.");
+  if (room.players.length < 3)  throw new Error("At least 3 players are required to start.");
 
   const wordData = await getRandomWordPair(
     room.settings.gameplay.difficulty,
@@ -44,20 +57,31 @@ export async function startGame(
   const { players } = setupGameRound(room.players, wordData);
 
   room.players = players;
-  room.status = "PLAYING";
-  room.word = wordData;
+  room.status  = "PLAYING";
+  room.word    = wordData;
 
   await setRoom(roomId, room);
+
   startDiscussionTimer(io, roomId, room.settings.timers.discussionDuration);
+
+  // Start hint timer if enabled — fires mid-discussion
+  if (room.settings.mechanics.hintSystem.enabled) {
+    startHintTimer(
+      io,
+      roomId,
+      wordData.hints,
+      room.settings.mechanics.hintSystem.revealHintAtSecond
+    );
+  }
 
   return {
     roomId,
-    status: room.status,
+    status:  room.status,
     players: room.players as (Player & { assignedWord: string })[],
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Cast Vote ────────────────────────────────────────────────────────────────
 
 export async function castVote(
   roomId: string,
@@ -66,62 +90,96 @@ export async function castVote(
 ): Promise<CastVoteResult> {
   const room = await getRoom(roomId);
 
-  // ── 1. Guards ──────────────────────────────────────────────────────────────
-  if (room.status !== "VOTING") {
-    throw new Error("Voting is not open right now.");
-  }
+  if (room.status !== "VOTING") throw new Error("Voting is not open right now.");
 
   const voter = room.players.find((p) => p.id === voterId);
-  if (!voter) throw new Error("Voter not found in this room.");
-  if (!voter.online) throw new Error("Offline players cannot vote.");
+  if (!voter)                  throw new Error("Voter not found in this room.");
+  if (!voter.online)           throw new Error("Offline players cannot vote.");
   if (voter.votedFor !== null) throw new Error("You have already voted.");
-  if (voterId === targetId) throw new Error("You cannot vote for yourself.");
+  if (voterId === targetId)    throw new Error("You cannot vote for yourself.");
 
   const target = room.players.find((p) => p.id === targetId);
   if (!target) throw new Error("Target player not found.");
 
-  // ── 2. Register vote ───────────────────────────────────────────────────────
   voter.votedFor = targetId;
 
-  // ── 3. Tally & Process (Core Logic) ────────────────────────────────────────
   const { allVoted, eliminatedId } = processVotes(room.players);
 
-  // ── 4. Handle Results ──────────────────────────────────────────────────────
-  let eliminated = null;
+  const eliminated = allVoted && eliminatedId
+    ? room.players.find((p) => p.id === eliminatedId) ?? null
+    : null;
 
-  if (allVoted && eliminatedId) {
-    eliminated = room.players.find((p) => p.id === eliminatedId) || null;
-    // Note: If you want to mark them as 'out' in the state, do it here.
-  }
-
-  // ── 5. Persist & Return ────────────────────────────────────────────────────
   await setRoom(roomId, room);
 
-  return { 
-    room, 
-    allVoted, 
-    eliminated 
-  };
+  return { room, allVoted, eliminated };
 }
 
+// ─── Guess Word ───────────────────────────────────────────────────────────────
 
+export async function guessWord(
+  roomId: string,
+  playerId: string,
+  guessedWord: string
+): Promise<GuessWordResult> {
+  const validation = GuessWordSchema.safeParse({ playerId, guessedWord });
+  if (!validation.success) throw new Error("Invalid guess format.");
 
-// ─────────────────────────────────────────────────────────────────────────────
+  const room = await getRoom(roomId);
 
-export async function endGame(io: Server, roomId: string): Promise<void> {
+  if (room.status !== "PLAYING")
+    throw new Error("Guessing is only allowed during the discussion phase.");
+  if (!room.settings.mechanics.allowImpostorGuess)
+    throw new Error("Impostor guessing is disabled in this room.");
+
+  const player = room.players.find((p) => p.id === playerId);
+  if (!player)            throw new Error("Player not found in this room.");
+  if (!player.isImpostor) throw new Error("Only the impostor can guess the word.");
+  if (!player.online)     throw new Error("Offline players cannot guess.");
+  if (!room.word)         throw new Error("Internal error: No word data found.");
+
+  const isCorrect = resolveGuess(validation.data.guessedWord, room.word.word);
+
+  return { isCorrect, secretWord: room.word.word, playerId };
+}
+
+// ─── End Game ─────────────────────────────────────────────────────────────────
+
+export async function endGame(
+  io: Server,
+  roomId: string,
+  context: ScoreContext = { reason: "vote", eliminatedId: null }
+): Promise<void> {
   clearRoomTimers(roomId);
 
-  const impostor = await getRoom(roomId).then((room) =>
-    room.players.find((p) => p.isImpostor)
+  const room = await getRoom(roomId);
+
+  // Guard: prevent double-ending if timer and last vote race each other
+  if (room.status === "FINISHED") return;
+
+  const impostor = room.players.find((p) => p.isImpostor);
+  if (!impostor)  throw new Error("Internal error: No impostor found.");
+  if (!room.word) throw new Error("Internal error: No word data found.");
+
+  // Calculate and persist scores before marking the room finished
+  room.players = calculateScores(
+    room.players,
+    impostor.id,
+    context,
+    room.settings.mechanics.scoreMultiplier
   );
-  const validation = PlayerSchema.safeParse(impostor);
-  if (!validation.success) {
-    console.error("Invalid impostor data:", validation.error.format());
-    throw new Error("Internal error: Invalid impostor data.");
-  }
-  const {id,isImpostor} = validation.data;
-  
-  io.to(roomId).emit("game_ended", { message: "Game has ended. Thanks for playing!" });
 
+  room.status = "FINISHED";
+  await setRoom(roomId, room);
 
+  console.log(`🏁 Game finished for room ${roomId}. Impostor was: ${impostor.name}`);
+
+  const payload: EndGamePayload = {
+    impostorId:   impostor.id,
+    impostorName: impostor.name,
+    secretWord:   room.word.word,
+    category:     room.word.category,
+    players:      room.players, // includes updated scores
+  };
+
+  io.to(roomId).emit("game_ended", payload);
 }
